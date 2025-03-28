@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Shield, 
@@ -23,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useToast } from '@/components/ui/toast';
+import { useToast } from '@/hooks/use-toast';
 
 // Mock user data
 const initialUsers = [

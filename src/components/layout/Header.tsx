@@ -3,7 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Shield, Menu, Sun, Moon } from 'lucide-react';
-import { useToast } from '@/components/ui/toaster';
+import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'react-router-dom';
 
 interface HeaderProps {
