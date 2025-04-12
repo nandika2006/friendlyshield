@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff, LogIn } from 'lucide-react';
@@ -6,32 +7,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const LoginForm: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [macAddress, setMacAddress] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { signIn } = useAuth();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate API login
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const { success, message } = await signIn(email, password, macAddress);
       
-      // Demo credentials
-      if (username === 'admin' && password === 'admin123') {
-        toast({
-          title: "Login successful",
-          description: "Welcome back to FriendlyShield!",
-        });
-        navigate('/admin/users');
-      } else if (username === 'user' && password === 'user123') {
+      if (success) {
         toast({
           title: "Login successful",
           description: "Welcome back to FriendlyShield!",
@@ -40,11 +35,19 @@ const LoginForm: React.FC = () => {
       } else {
         toast({
           title: "Login failed",
-          description: "Invalid credentials. Please try again.",
+          description: message,
           variant: "destructive",
         });
       }
-    }, 1500);
+    } catch (error) {
+      toast({
+        title: "Login failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -61,12 +64,13 @@ const LoginForm: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="username"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
             />
