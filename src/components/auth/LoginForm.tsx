@@ -30,7 +30,7 @@ const LoginForm: React.FC = () => {
     e.preventDefault();
     setFormError('');
     
-    // Validate MAC address format first
+    // Validate MAC address format
     if (!validateMacAddress(macAddress)) {
       setFormError('Invalid MAC address format. Please use format XX:XX:XX:XX:XX:XX');
       return;
