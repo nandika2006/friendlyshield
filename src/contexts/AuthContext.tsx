@@ -129,7 +129,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, message: "Registration failed" };
       }
 
-      // Register the MAC address for the user
+      // After successful signup, we need to create the MAC address record
+      // First, we'll sign in to get an authenticated session
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError) {
+        console.error("Error signing in after registration:", signInError);
+        return { success: true, message: "Registration successful, but could not register device. Please log in to complete setup." };
+      }
+
+      // Now register the MAC address with the authenticated session
       const { error: macError } = await supabase.from('mac_addresses').insert({
         user_id: data.user.id,
         address: userData.macAddress,
@@ -137,8 +149,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (macError) {
-        // Clean up if MAC address registration fails
-        return { success: false, message: "Failed to register device: " + macError.message };
+        console.error("MAC address registration error:", macError);
+        // We'll still consider registration successful but inform the user of the device issue
+        return { 
+          success: true, 
+          message: "Account created successfully, but there was an issue registering your device. Please contact support."
+        };
       }
 
       // Log successful registration
@@ -148,6 +164,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         event_type: 'registration',
         description: 'User registered with new device',
       });
+
+      // Sign out after registration to make them log in properly
+      await supabase.auth.signOut();
 
       return { success: true, message: "Registration successful. Please check your email to confirm your account." };
     } catch (error) {
