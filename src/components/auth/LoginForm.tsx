@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -15,12 +16,26 @@ const LoginForm: React.FC = () => {
   const [macAddress, setMacAddress] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { signIn } = useAuth();
 
+  const validateMacAddress = (mac: string): boolean => {
+    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+    return macRegex.test(mac);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
+    
+    // Validate MAC address format first
+    if (!validateMacAddress(macAddress)) {
+      setFormError('Invalid MAC address format. Please use format XX:XX:XX:XX:XX:XX');
+      return;
+    }
+    
     setIsSubmitting(true);
     
     try {
@@ -33,18 +48,22 @@ const LoginForm: React.FC = () => {
         });
         navigate('/dashboard');
       } else {
-        toast({
-          title: "Login failed",
-          description: message,
-          variant: "destructive",
-        });
+        let errorMessage = message;
+        
+        // Provide more specific error messages based on common issues
+        if (message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (message.includes('Unrecognized device')) {
+          errorMessage = 'This device is not registered with your account. Please use a registered device.';
+        } else if (message.includes('blocked')) {
+          errorMessage = 'This device has been blocked. Please contact support.';
+        }
+        
+        setFormError(errorMessage);
       }
     } catch (error) {
-      toast({
-        title: "Login failed",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
-        variant: "destructive",
-      });
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+      setFormError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -63,6 +82,11 @@ const LoginForm: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {formError && (
+            <Alert variant="destructive">
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -108,6 +132,9 @@ const LoginForm: React.FC = () => {
               required
               className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
             />
+            <p className="text-xs text-muted-foreground">
+              Format: XX:XX:XX:XX:XX:XX (e.g., 00:1A:2B:3C:4D:5E)
+            </p>
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
