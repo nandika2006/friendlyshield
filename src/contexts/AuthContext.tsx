@@ -22,46 +22,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { toast } = useToast();
 
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-      }
-    );
+    // Set up auth state listener FIRST -- never do async here!
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+    });
 
-    // Check for existing session
+    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string, macAddress: string) => {
-    try {
-      // Validate MAC address format
-      if (!isValidMacAddress(macAddress)) {
-        return { success: false, message: "Invalid MAC address format" };
-      }
+  // Helper function to validate MAC address format
+  const isValidMacAddress = (mac: string): boolean => {
+    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+    return macRegex.test(mac);
+  };
 
-      // Sign in with Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  // Improved signIn function
+  const signIn = async (email: string, password: string, macAddress: string) => {
+    if (!isValidMacAddress(macAddress)) {
+      return { success: false, message: "Invalid MAC address format" };
+    }
+
+    try {
+      // Network accessibility check
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        return { success: false, message: error.message };
+        // Network or credentials error
+        return { success: false, message: error.message || 'Login failed' };
       }
-
       if (!data.user) {
         return { success: false, message: "Login failed" };
       }
 
-      // Verify the MAC address is associated with the user
+      // Check mac_addresses table for this user and address
       const { data: macData, error: macError } = await supabase
         .from('mac_addresses')
         .select('*')
@@ -70,17 +70,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (macError) {
         await supabase.auth.signOut();
-        return { success: false, message: "MAC address verification failed" };
+        return { success: false, message: "MAC address verification failed: " + macError.message };
       }
 
       if (!macData || macData.length === 0) {
-        // MAC address not found for this user
         await supabase.auth.signOut();
         return { success: false, message: "Unrecognized device. Please use a registered device." };
       }
 
       if (macData[0].is_blocked) {
-        // MAC address is blocked
         await supabase.auth.signOut();
         return { success: false, message: "This device has been blocked. Please contact support." };
       }
@@ -94,26 +92,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       return { success: true, message: "Login successful" };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : "An unexpected error occurred" 
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error?.message || "An unexpected error occurred. Please check your network connection.",
       };
     }
   };
 
+  // Improved signUp function with network and session handling
   const signUp = async (email: string, password: string, userData: { full_name: string; username: string; macAddress: string }) => {
+    if (!isValidMacAddress(userData.macAddress)) {
+      return { success: false, message: "Invalid MAC address format" };
+    }
     try {
-      // Validate MAC address format
-      if (!isValidMacAddress(userData.macAddress)) {
-        return { success: false, message: "Invalid MAC address format" };
-      }
+      // Must have email redirect URL for Supabase
+      const redirectUrl = `${window.location.origin}/`;
 
-      // Sign up with Supabase
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo: redirectUrl,
           data: {
             full_name: userData.full_name,
             username: userData.username,
@@ -122,26 +122,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (error) {
-        return { success: false, message: error.message };
+        return { success: false, message: error.message || "Registration failed" };
       }
-
       if (!data.user) {
         return { success: false, message: "Registration failed" };
       }
 
-      // After successful signup, we need to create the MAC address record
-      // First, we'll sign in to get an authenticated session
+      // After signup, sign in to get a valid session to insert MAC address
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
       });
-
       if (signInError) {
-        console.error("Error signing in after registration:", signInError);
-        return { success: true, message: "Registration successful, but could not register device. Please log in to complete setup." };
+        return {
+          success: true,
+          message: "Registration successful, but could not register device. Please log in to complete setup."
+        };
       }
 
-      // Now register the MAC address with the authenticated session
+      // Insert MAC for this user with active session now
       const { error: macError } = await supabase.from('mac_addresses').insert({
         user_id: data.user.id,
         address: userData.macAddress,
@@ -149,15 +148,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (macError) {
-        console.error("MAC address registration error:", macError);
-        // We'll still consider registration successful but inform the user of the device issue
-        return { 
-          success: true, 
-          message: "Account created successfully, but there was an issue registering your device. Please contact support."
+        // Consider registration ok but warn about device
+        return {
+          success: true,
+          message: "Account created, but failed to register device: " + macError.message,
         };
       }
 
-      // Log successful registration
+      // Log registration
       await supabase.from('security_logs').insert({
         user_id: data.user.id,
         mac_address: userData.macAddress,
@@ -165,14 +163,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         description: 'User registered with new device',
       });
 
-      // Sign out after registration to make them log in properly
+      // Log out so user must log in to verify
       await supabase.auth.signOut();
 
       return { success: true, message: "Registration successful. Please check your email to confirm your account." };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : "An unexpected error occurred" 
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error?.message || "An unexpected error occurred. Please check your network connection.",
       };
     }
   };
@@ -181,19 +179,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await supabase.auth.signOut();
     } catch (error) {
-      console.error("Error signing out:", error);
       toast({
         title: "Error signing out",
         description: "An unexpected error occurred while signing out.",
         variant: "destructive",
       });
     }
-  };
-
-  // Helper function to validate MAC address format
-  const isValidMacAddress = (mac: string): boolean => {
-    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-    return macRegex.test(mac);
   };
 
   return (
